@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using GitFameSharp.AuthorMerge;
@@ -16,7 +18,24 @@ namespace GitFameSharp
     {
         public static async Task Main(string[] args)
         {
+            if (args.Any(x => x.Equals("--version", StringComparison.OrdinalIgnoreCase)))
+            {
+                CommandLineOptions.PrintVersion(Console.WriteLine);
+                return;
+            }
+
+            if (args.Any(x => x.Equals("--help", StringComparison.OrdinalIgnoreCase)))
+            {
+                CommandLineOptions.PrintUsage(Console.WriteLine);
+                return;
+            }
+
             var options = InitializeOptions(args);
+            if (!options.Validate(Console.WriteLine))
+            {
+                return;
+            }
+
             var git = new GitCommands(options.GetGitOptions());
             var files = await git.GetFilesAsync().ConfigureAwait(false);
 
@@ -48,6 +67,11 @@ namespace GitFameSharp
 
             WriteOutput(options, authorStatistics);
             DisplaySummary(authorStatistics);
+
+            if (Debugger.IsAttached)
+            {
+                Console.ReadLine();
+            }
         }
 
         private static CommandLineOptions InitializeOptions(string[] args)
@@ -119,7 +143,6 @@ namespace GitFameSharp
             }
 
             Console.WriteLine(separator);
-            Console.ReadLine();
         }
     }
 }

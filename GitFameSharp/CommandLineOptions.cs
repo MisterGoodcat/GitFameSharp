@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using GitFameSharp.AuthorMerge;
 using GitFameSharp.Git;
 
@@ -8,6 +9,58 @@ namespace GitFameSharp
 {
     public class CommandLineOptions
     {
+        public static void PrintVersion(Action<string> writeMessage)
+        {
+            var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyFileVersionAttribute>().Version;
+            writeMessage("GitFameSharp version: " + version);
+        }
+
+        public static void PrintUsage(Action<string> writeMessage)
+        {
+            PrintVersion(writeMessage);
+            writeMessage("Usage: ");
+            writeMessage(string.Empty);
+            writeMessage("--Help");
+            PrintSplitMessage(writeMessage, "Prints this help screen and exits.");
+            writeMessage("--Version");
+            PrintSplitMessage(writeMessage, "Prints the version and exits.");
+            writeMessage($"--{nameof(GitDir)}=\"[path]\"");
+            PrintSplitMessage(writeMessage, "The path to the Git directory to analyze. Default: \".\"");
+            writeMessage($"--{nameof(Branch)}=\"[branch]\"");
+            PrintSplitMessage(writeMessage, "The branch to analyze. Default: \"HEAD\"");
+            writeMessage($"--{nameof(Exclude)}=\"[RegEx]\"");
+            PrintSplitMessage(writeMessage, "A regular expression (.NET flavor) to determine which files or folders to exclude. Default: [empty]");
+            writeMessage($"--{nameof(Include)}=\"[RegEx]\"");
+            PrintSplitMessage(writeMessage, "A regular expression (.NET flavor) to determine which files to include. Only inspects the files that have not been excluded by the --Exclude option. Default: [empty]");
+            writeMessage($"--{nameof(ParallelBlameProcesses)}=[number]");
+            PrintSplitMessage(writeMessage, "The number of CPU cores to use in parallel. Default: [Number of cores on your machine]");
+            writeMessage($"--{nameof(Output)}=\"[path]\"");
+            PrintSplitMessage(writeMessage, "The target file the results should be written to in CSV format. Leave empty to prevent output to file. Default: \"result.csv\"");
+            writeMessage($"--{nameof(AuthorsToMerge)}=\"[list of aliases]\"");
+            PrintSplitMessage(writeMessage, "Multiple author aliases to be merged into a single statistic. Syntax: Put each group of aliases into brackets, use the pipe symbol to separate aliases. E.g: \"[Author A alias 1|Author A alias 2][Author B alias 1|Author B alias 2]\". The first alias entry is used as the author name of the aggregated result. You can use a non-existing author alias as the first entry to beautify the author name. Default: [empty]");
+        }
+
+        private static void PrintSplitMessage(Action<string> writeMessage, string message)
+        {
+            const int indent = 4;
+            const int maxLineContentLength = 76;
+
+            while (!string.IsNullOrWhiteSpace(message))
+            {
+                var maxLength = maxLineContentLength > message.Length ? message.Length : maxLineContentLength;
+                var nextSpaceIndex = message.LastIndexOf(' ', maxLength - 1);
+                if (nextSpaceIndex == -1 || maxLength < maxLineContentLength)
+                {
+                    nextSpaceIndex = maxLength;
+                }
+
+                writeMessage($"{new string(' ', indent)}{message.Substring(0, nextSpaceIndex)}");
+                message = message.Substring(nextSpaceIndex).Trim();
+            }
+
+            writeMessage(string.Empty);
+        }
+
         public string GitDir { get; set; } = ".";
         public string Branch { get; set; } = "HEAD";
         public string Include { get; set; }
@@ -57,6 +110,36 @@ namespace GitFameSharp
             }
 
             return new AuthorMergeOptions(lookup);
+        }
+
+        public bool Validate(Action<string> writeMessage)
+        {
+            var result = true;
+
+            if (string.IsNullOrWhiteSpace(GitDir))
+            {
+                writeMessage?.Invoke("ERROR: No git directory provided.");
+                result = false;
+            }
+
+            if (string.IsNullOrWhiteSpace(Branch))
+            {
+                writeMessage?.Invoke("ERROR: No branch provided.");
+                result = false;
+            }
+
+            if (ParallelBlameProcesses < 1)
+            {
+                writeMessage?.Invoke("ERROR: The number of parallel blame processes must be greater than 0.");
+                result = false;
+            }
+
+            if (!result)
+            {
+                writeMessage?.Invoke("Use --Help to display a usage screen.");
+            }
+
+            return result;
         }
     }
 }
