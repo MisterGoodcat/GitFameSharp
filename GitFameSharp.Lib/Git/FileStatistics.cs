@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 
-namespace GitFameSharp
+namespace GitFameSharp.Git
 {
-    public class FileStatistics
+    public sealed class FileStatistics
     {
         public string File { get; }
         public IEnumerable<string> Authors { get; set; }

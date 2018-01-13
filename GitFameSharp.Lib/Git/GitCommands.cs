@@ -6,42 +6,42 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace GitFameSharp
+namespace GitFameSharp.Git
 {
-    public class Git
+    public sealed class GitCommands
     {
-        private const string GitCommand = "git";
+        private const string GitExecutable = "git";
         private readonly string[] _defaultCommandLineArgs;
-        private readonly Options _options;
+        private readonly GitOptions _gitOptions;
         private readonly Regex _includeRegex;
         private readonly Regex _excludeRegex;
 
-        public Git(Options options)
+        public GitCommands(GitOptions gitOptions)
         {
-            _options = options;
-            _defaultCommandLineArgs = new[] { "-C", _options.GitDir };
-            _includeRegex = !string.IsNullOrWhiteSpace(_options.Include) ? new Regex(_options.Include, RegexOptions.IgnoreCase) : null;
-            _excludeRegex = !string.IsNullOrWhiteSpace(_options.Exclude) ? new Regex(_options.Exclude, RegexOptions.IgnoreCase) : null;
+            _gitOptions = gitOptions;
+            _defaultCommandLineArgs = new[] { "-C", _gitOptions.GitDir };
+            _includeRegex = !string.IsNullOrWhiteSpace(_gitOptions.Include) ? new Regex(_gitOptions.Include, RegexOptions.IgnoreCase) : null;
+            _excludeRegex = !string.IsNullOrWhiteSpace(_gitOptions.Exclude) ? new Regex(_gitOptions.Exclude, RegexOptions.IgnoreCase) : null;
         }
 
         public async Task<ICollection<string>> GetFilesAsync()
         {
-            var result = await ExecuteGitAsync("ls-files", "--with-tree", _options.Branch).ConfigureAwait(false);
+            var result = await ExecuteGitAsync("ls-files", "--with-tree", _gitOptions.Branch).ConfigureAwait(false);
             var filteredResult = FilterFiles(result);
             return filteredResult;
         }
 
-        public async Task<Dictionary<string, int>> GetCommitCountByAuthorAsync()
+        public async Task<Dictionary<string, int>> ShortlogAsync()
         {
-            var lines = await ExecuteGitAsync("shortlog", "-s", _options.Branch).ConfigureAwait(false);
+            var lines = await ExecuteGitAsync("shortlog", "-s", _gitOptions.Branch).ConfigureAwait(false);
             var result = ProcessRawCommitCount(lines);
             return result;
         }
 
-        public async Task<FileStatistics> GetFileStatisticsAsync(string file)
+        public async Task<FileStatistics> BlameAsync(string file)
         {
             const string authorMarker = "author ";
-            var result = await ExecuteGitAsync(s => s?.StartsWith(authorMarker) ?? false, "blame", "--line-porcelain", _options.Branch, file).ConfigureAwait(false);
+            var result = await ExecuteGitAsync(s => s?.StartsWith(authorMarker) ?? false, "blame", "--line-porcelain", _gitOptions.Branch, file).ConfigureAwait(false);
             var authors = result
                 .Select(x => x.Substring(authorMarker.Length).Trim())
                 .ToList()
@@ -80,7 +80,7 @@ namespace GitFameSharp
         {
             var result = lines
                 .Where(x => !string.IsNullOrWhiteSpace(x) && x.Contains("\t"))
-                .Select(x => x.Split('\t', StringSplitOptions.RemoveEmptyEntries))
+                .Select(x => x.Split(new [] { '\t' }, StringSplitOptions.RemoveEmptyEntries))
                 .ToDictionary(x => x[1], x => int.Parse(x[0].Trim()));
 
             return result;
@@ -93,9 +93,9 @@ namespace GitFameSharp
         
         private Task<ICollection<string>> ExecuteGitAsync(Func<string, bool> filterFunc, params string[] args)
         {
-            var psi = new ProcessStartInfo(GitCommand)
+            var psi = new ProcessStartInfo(GitExecutable)
             {
-                Arguments = string.Join(' ', _defaultCommandLineArgs.Concat(args)),
+                Arguments = string.Join(" ", _defaultCommandLineArgs.Concat(args)),
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8,

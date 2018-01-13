@@ -13,4 +13,8 @@
     <PackageReference Include="ShellProgressBar" Version="4.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\GitFameSharp.Lib\GitFameSharp.Lib.csproj" />
+  </ItemGroup>
+
 </Project>

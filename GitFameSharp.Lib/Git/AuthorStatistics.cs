@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace GitFameSharp
+namespace GitFameSharp.Git
 {
-    public class AuthorStatistics
+    public sealed class AuthorStatistics
     {
         public string Author { get; }
         public int TotalLineCount { get; private set; }

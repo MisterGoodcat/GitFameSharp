@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace GitFameSharp
 {
     // ReSharper disable once InconsistentNaming => It's really extensions to the interface
-    public static class IEnumerableExtensions
+    internal static class IEnumerableExtensions
     {
         // Take and adopted from here: https://blogs.msdn.microsoft.com/pfxteam/2012/03/05/implementing-a-simple-foreachasync-part-2/
         public static Task ForEachAsync<T>(this IEnumerable<T> source, int dop, Func<T, Task> body)

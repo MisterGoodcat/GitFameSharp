@@ -4,7 +4,11 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using GitFameSharp.AuthorMerge;
+using GitFameSharp.Git;
+using GitFameSharp.Output;
 using Microsoft.Extensions.Configuration;
+using ShellProgressBar;
 
 namespace GitFameSharp
 {
@@ -13,57 +17,92 @@ namespace GitFameSharp
         public static async Task Main(string[] args)
         {
             var options = InitializeOptions(args);
-            var git = new Git(options);
+            var git = new GitCommands(options.GetGitOptions());
             var files = await git.GetFilesAsync().ConfigureAwait(false);
 
-            var gitFileAnalyzer = new GitFileAnalyzer(options, git);
-            var authorStatistics = await gitFileAnalyzer.BlameFilesAsync(files).ConfigureAwait(false);
+            var gitFileAnalyzer = new GitFileAnalyzer(options.GetFileAnalyzerOptions(), git);
 
-            var commitStatistics = await git.GetCommitCountByAuthorAsync().ConfigureAwait(false);
-            foreach (var commitStatistic in commitStatistics)
+            ICollection<AuthorStatistics> authorStatistics = null;
+
+            using (var progressBar = CreateProgressBar(files.Count))
             {
-                var authorStatistic = authorStatistics.SingleOrDefault(x => x.Author.Equals(commitStatistic.Key));
-                if (authorStatistic == null)
+                // ReSharper disable once AccessToDisposedClosure => false positive
+                authorStatistics = await gitFileAnalyzer.BlameFilesAsync(files, progress => AdvanceProgressBar(progressBar, progress)).ConfigureAwait(false);
+
+                var commitStatistics = await git.ShortlogAsync().ConfigureAwait(false);
+                foreach (var commitStatistic in commitStatistics)
                 {
-                    authorStatistic = new AuthorStatistics(commitStatistic.Key);
-                    authorStatistics.Add(authorStatistic);
+                    var authorStatistic = authorStatistics.SingleOrDefault(x => x.Author.Equals(commitStatistic.Key));
+                    if (authorStatistic == null)
+                    {
+                        authorStatistic = new AuthorStatistics(commitStatistic.Key);
+                        authorStatistics.Add(authorStatistic);
+                    }
+
+                    authorStatistic.CommitCount = commitStatistic.Value;
                 }
 
-                authorStatistic.CommitCount = commitStatistic.Value;
+                var merger = new AuthorsMerger(options.GetAuthorMergeOptions());
+                authorStatistics = merger.Merge(authorStatistics);
             }
 
-            authorStatistics = MergeAuthors(options, authorStatistics);
             WriteOutput(options, authorStatistics);
             DisplaySummary(authorStatistics);
         }
 
-        private static ICollection<AuthorStatistics> MergeAuthors(Options options, ICollection<AuthorStatistics> authorStatistics)
+        private static CommandLineOptions InitializeOptions(string[] args)
         {
-            var processedAuthors = new List<string>();
-            var result = new List<AuthorStatistics>();
+            var configuration = new ConfigurationBuilder()
+                .AddCommandLine(args)
+                .Build();
 
-            if (!string.IsNullOrWhiteSpace(options.AuthorsToMerge))
+            var options = new CommandLineOptions();
+            configuration.Bind(options);
+
+            return options;
+        }
+
+        private static ProgressBar CreateProgressBar(int totalTickCount)
+        {
+            var options = new ProgressBarOptions
             {
-                var mergeGroups = options.AuthorsToMerge.Split("][", StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim('[', ']'));
-                foreach (var mergeGroup in mergeGroups)
-                {
-                    var authorsToMerge = mergeGroup.Split('|', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
-                    if (authorsToMerge.Count == 0)
-                    {
-                        continue;
-                    }
-                    
-                    var existingAuthorStatistics = authorStatistics.Where(x => authorsToMerge.Contains(x.Author)).ToList();
-                    var newName = authorsToMerge.First();
-                    var newAuthorStatistics = AuthorStatistics.MergeFrom(newName, existingAuthorStatistics);
-                    result.Add(newAuthorStatistics);
+                ProgressBarOnBottom = true,
+                ForegroundColor = ConsoleColor.Yellow,
+                ForegroundColorDone = ConsoleColor.DarkYellow,
+                BackgroundColor = ConsoleColor.DarkGray,
+                BackgroundCharacter = '\u2593'
+            };
 
-                    processedAuthors.AddRange(authorsToMerge);
-                }
+            return new ProgressBar(totalTickCount, "Starting...", options);
+        }
+
+        private static void AdvanceProgressBar(ProgressBar progressBar, GitFileAnalyzer.Progress progress)
+        {
+            progressBar.Tick($"Finished {progress.FinishedFiles} of {progress.TotalFiles} (Remaining: {progress.RemainingTime.TotalHours:00}:{progress.RemainingTime:mm\\:ss})");
+        }
+
+        private static void WriteOutput(CommandLineOptions commandLineOptions, ICollection<AuthorStatistics> authorStatistics)
+        {
+            var outputPath = commandLineOptions.Output;
+            if (string.IsNullOrWhiteSpace(outputPath))
+            {
+                return;
             }
 
-            var unprocessedAuthors = authorStatistics.Where(x => !processedAuthors.Contains(x.Author)).ToList();
-            return result.Concat(unprocessedAuthors).ToList();
+            foreach (var invalidPathChar in Path.GetInvalidPathChars())
+            {
+                outputPath = outputPath.Replace(invalidPathChar, '_');
+            }
+
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+            }
+
+            var exporter = new CsvExporter();
+            var content = exporter.ConvertToCsv(authorStatistics);
+
+            File.WriteAllText(outputPath, content, Encoding.UTF8);
         }
 
         private static void DisplaySummary(ICollection<AuthorStatistics> authorStatistics)
@@ -81,66 +120,6 @@ namespace GitFameSharp
 
             Console.WriteLine(separator);
             Console.ReadLine();
-        }
-
-        private static void WriteOutput(Options options, ICollection<AuthorStatistics> authorStatistics)
-        {
-            var outputPath = options.Output;
-            if (string.IsNullOrWhiteSpace(outputPath))
-            {
-                return;
-            }
-
-            foreach (var invalidPathChar in Path.GetInvalidPathChars())
-            {
-                outputPath = outputPath.Replace(invalidPathChar, '_');
-            }
-
-            if (File.Exists(outputPath))
-            {
-                File.Delete(outputPath);
-            }
-
-            var content = ConvertToCsv(authorStatistics);
-
-            File.WriteAllText(outputPath, content, Encoding.UTF8);
-        }
-
-        private static string ConvertToCsv(ICollection<AuthorStatistics> authorStatistics)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("Author;File Extension;Lines By File Extension;Total Commit Count;Total Files Contributed To");
-            foreach (var authorStatistic in authorStatistics.OrderBy(x => x.Author))
-            {
-                foreach (var extension in authorStatistic.LineCountByFileExtension.Keys)
-                {
-                    sb.Append("\"");
-                    sb.Append(authorStatistic.Author);
-                    sb.Append("\";\"");
-                    sb.Append(extension);
-                    sb.Append("\";");
-                    sb.Append(authorStatistic.LineCountByFileExtension[extension]);
-                    sb.Append(";");
-                    sb.Append(authorStatistic.CommitCount);
-                    sb.Append(";");
-                    sb.Append(authorStatistic.FilesContributedTo.Count);
-                    sb.AppendLine();
-                }
-            }
-
-            return sb.ToString();
-        }
-
-        private static Options InitializeOptions(string[] args)
-        {
-            var configuration = new ConfigurationBuilder()
-                .AddCommandLine(args)
-                .Build();
-
-            var options = new Options();
-            configuration.Bind(options);
-
-            return options;
         }
     }
 }
