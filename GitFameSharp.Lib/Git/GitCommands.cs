@@ -99,7 +99,8 @@ namespace GitFameSharp.Git
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
+                StandardErrorEncoding = Encoding.UTF8,
+                UseShellExecute = false
             };
 
             var process = new Process

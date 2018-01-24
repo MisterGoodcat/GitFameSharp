@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\GitFameSharp.Lib\GitFameSharp.Lib.csproj" />
+    <ProjectReference Include="..\GitFameSharp.Runner\GitFameSharp.Runner.csproj" />
   </ItemGroup>
 
 </Project>

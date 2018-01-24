@@ -9,7 +9,7 @@ namespace GitFameSharp.Git
         public string Author { get; }
         public int TotalLineCount { get; private set; }
         public Dictionary<string, int> LineCountByFileExtension { get; } = new Dictionary<string, int>();
-        public List<string> FilesContributedTo { get; } = new List<string>();
+        public Dictionary<string, int> LineCountByFile { get; } = new Dictionary<string, int>();
         public int CommitCount { get; set; }
 
         public AuthorStatistics(string author)
@@ -23,7 +23,7 @@ namespace GitFameSharp.Git
             var extension = Path.GetExtension(file)?.ToLower() ?? "[none]";
             LineCountByFileExtension.TryGetValue(extension, out var count);
             LineCountByFileExtension[extension] = count + lineCount;
-            FilesContributedTo.Add(file);
+            LineCountByFile[file] = lineCount;
         }
 
         public override string ToString()
@@ -35,15 +35,20 @@ namespace GitFameSharp.Git
         {
             var newAuthorStatistics = new AuthorStatistics(newAuthorName);
             newAuthorStatistics.CommitCount = existingAuthorStatistics.Sum(x => x.CommitCount);
-            newAuthorStatistics.FilesContributedTo.AddRange(existingAuthorStatistics.SelectMany(x => x.FilesContributedTo).Distinct().ToList());
             newAuthorStatistics.TotalLineCount = existingAuthorStatistics.Sum(x => x.TotalLineCount);
 
             foreach (var stats in existingAuthorStatistics)
             {
-                foreach (var extension in stats.LineCountByFileExtension.Keys)
+                foreach (var extensionEntry in stats.LineCountByFileExtension)
                 {
-                    newAuthorStatistics.LineCountByFileExtension.TryGetValue(extension, out var count);
-                    newAuthorStatistics.LineCountByFileExtension[extension] = count + stats.LineCountByFileExtension[extension];
+                    newAuthorStatistics.LineCountByFileExtension.TryGetValue(extensionEntry.Key, out var count);
+                    newAuthorStatistics.LineCountByFileExtension[extensionEntry.Key] = count + extensionEntry.Value;
+                }
+
+                foreach (var fileEntry in stats.LineCountByFile)
+                {
+                    newAuthorStatistics.LineCountByFile.TryGetValue(fileEntry.Key, out var count);
+                    newAuthorStatistics.LineCountByFile[fileEntry.Key] = count + fileEntry.Value;
                 }
             }
 
